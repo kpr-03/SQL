@@ -1,0 +1,154 @@
+CREATE database dannys_diner;
+
+CREATE TABLE sales (
+  customer_id VARCHAR(1),
+  order_date DATE,
+  product_id INTEGER
+);
+
+INSERT INTO sales
+  (customer_id, order_date, product_id)
+VALUES
+  ('A', '2021-01-01', '1'),
+  ('A', '2021-01-01', '2'),
+  ('A', '2021-01-07', '2'),
+  ('A', '2021-01-10', '3'),
+  ('A', '2021-01-11', '3'),
+  ('A', '2021-01-11', '3'),
+  ('B', '2021-01-01', '2'),
+  ('B', '2021-01-02', '2'),
+  ('B', '2021-01-04', '1'),
+  ('B', '2021-01-11', '1'),
+  ('B', '2021-01-16', '3'),
+  ('B', '2021-02-01', '3'),
+  ('C', '2021-01-01', '3'),
+  ('C', '2021-01-01', '3'),
+  ('C', '2021-01-07', '3');
+ 
+
+CREATE TABLE menu (
+  product_id INTEGER,
+  product_name VARCHAR(5),
+  price INTEGER
+);
+
+INSERT INTO menu
+  (product_id, product_name, price)
+VALUES
+  ('1', 'sushi', '10'),
+  ('2', 'curry', '15'),
+  ('3', 'ramen', '12');
+  
+
+CREATE TABLE members (
+  customer_id VARCHAR(1),
+  join_date DATE
+);
+
+INSERT INTO members
+  (customer_id, join_date)
+VALUES
+  ('A', '2021-01-07'),
+  ('B', '2021-01-09');
+  
+  -- 1. What is the total amount each customer spent at the restaurant?
+  select * from members;
+  select * from menu;
+  select * from sales;  
+  select s.customer_id, sum(price)
+  from menu
+  join sales s on menu.product_id = s.product_id
+  
+ -- 2. How many days has each customer visited the restaurant? --
+ select customer_id,  count(distinct order_date)
+ from sales
+ group by customer_id;
+ 
+  -- 3. What was the first item from the menu purchased by each customer? -- 
+select customer_id, product_name, 
+first_value(product_name) over(partition by customer_id) as first_ordered_product
+from sales s
+join menu m on s.product_id = m.product_id
+group by customer_id;
+
+--4)What is the most purchased item on the menu and how many times was it purchased by all customers?
+
+select * from sales;
+select * from menu;
+
+
+SELECT product_name,
+       count(s.product_id)
+FROM sales s
+INNER JOIN menu m ON s.product_id = m.product_id
+group by product_name
+limit 1;
+
+--5)Which item was the most popular for each customer?
+
+select * from sales;
+
+
+with cte as
+(select customer_id, count(s.product_id) as most_popular_item, m.product_name, s.product_id,
+rank() over(partition by customer_id order by count(s.product_id)desc) as rnk
+from sales s
+inner join menu m on s.product_id = m.product_id
+group by product_name, customer_id)
+select *
+from cte
+where rnk = 1;
+
+------------------------------------
+WITH order_info AS
+  (SELECT product_name,
+          customer_id,
+          count(product_name) AS order_count,
+          rank() over(PARTITION BY customer_id
+                      ORDER BY count(product_name) DESC) AS rank_num
+   FROM menu m
+   INNER JOIN sales s ON m.product_id = s.product_id
+   GROUP BY customer_id,
+            product_name)
+SELECT customer_id,
+       product_name,
+       order_count
+FROM order_info
+WHERE rank_num =1;
+
+
+--6)Which item was purchased first by the customer after they became a member?
+select * from members;
+with diner_purchase AS
+  (SELECT product_name,
+          s.customer_id,
+          order_date,
+          join_date,
+          m.product_id,
+          DENSE_RANK() OVER(PARTITION BY s.customer_id
+                            ORDER BY s.order_date) AS first_item
+   FROM menu AS m
+   INNER JOIN sales AS s ON m.product_id = s.product_id
+   INNER JOIN members AS mem ON mem.customer_id = s.customer_id
+   WHERE order_date >= join_date )
+SELECT customer_id,
+       product_name,
+       order_date
+FROM diner_purchase
+WHERE first_item=1;
+
+--7)Which item was purchased just before the customer became a member?
+select * from members;
+select * from sales;
+select * from menu;
+
+with dinner_first as
+(select product_name,s.customer_id,order_date,join_date,m.product_id,
+ DENSE_RANK() OVER(PARTITION BY s.customer_id order by s.order_date desc) as item_drnk
+from menu as m
+ inner join sales s on m.product_id=s.product_id
+ inner join members mem on mem.customer_id =s.customer_id
+ where order_date < join_date)
+ select customer_id,product_name,order_date,join_date
+ from dinner_first
+ where item_drnk =1;
